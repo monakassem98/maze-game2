@@ -45,7 +45,7 @@ small,.muted{opacity:.75;font-weight:400}
 @media (prefers-reduced-motion:reduce){#conf span{animation:none;display:none}}
 </style></head><body>
 <main>
-<section id="home" hidden>
+<section id="home">
   <div class="card big"><h1>🧭 MazeQuest</h1><div>Classroom Chase</div></div>
   <div class="card"><p>Students: open the personal link your teacher gave you.</p>
   <button class="btn pink" data-act="pin">Teacher login</button></div>
@@ -64,7 +64,6 @@ small,.muted{opacity:.75;font-weight:400}
 
 <script>
 "use strict";
-/* ===================== 1. STORE ===================== */
 const KEY='mazequest-v1', $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const THEMES={
@@ -86,7 +85,6 @@ function closeModal(){$('modal').hidden=true}
 const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
 
-/* ===================== 2. AUDIO ===================== */
 let AC,muted=false,mus;
 function tone(f,d,type='triangle',t0=0,v=.13){if(muted)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+t0;
  o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d)}catch(e){}}
@@ -94,8 +92,7 @@ const seq=(n,d=.15,type)=>n.forEach((f,i)=>tone(f,d+.1,type,i*d));
 const sfx={star:()=>tone(900,.08),right:()=>seq([523,659,784,1047]),wrong:()=>tone(160,.35,'sawtooth',0,.07),hit:()=>seq([300,200,130],.1,'square'),win:()=>seq([523,659,784,1047,784,1047,1319],.14)};
 function music(on){clearInterval(mus);if(!on)return;const n=[523,587,659,784,880,784,659,587];let i=0;mus=setInterval(()=>tone(n[i++%8],.2,'sine',0,.04),260)}
 
-/* ===================== 3. SELF-CONTAINED SIGNED LINKS ===================== */
-const SECRET='mazequest-secure-key-2026';
+const SECRET='change-me-before-class';
 const b64=s=>btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const unb64=s=>decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))));
 async function sign(msg){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
@@ -133,7 +130,6 @@ function gate(s){
   show('gate');
 }
 
-/* ===================== 4. GAME ENGINE ===================== */
 const MAP=["###############","#P.....#......#","#.###.#.#.###.#","#.#.........#.#","#...##.#.##...#","###.#..C..#.###","#...##.#.##...#","#.#.........#.#","#.###.#.#.###.#","#.....#C......#","###############"];
 const W=15,H=11,S=40,cv=$('cv'),ctx=cv.getContext('2d');
 const open=(x,y)=>MAP[y]&&MAP[y][x]!==undefined&&MAP[y][x]!=='#';
@@ -233,7 +229,6 @@ function end(win){
 }
 function confetti(){const c=$('conf');for(let i=0;i<45;i++){const s=document.createElement('span');s.textContent=['🎉','✨','⭐','🎈'][i%4];s.style.left=Math.random()*100+'vw';s.style.animationDelay=Math.random()*1.5+'s';c.appendChild(s)}setTimeout(()=>c.innerHTML='',5500)}
 
-/* Controls */
 const KEYS={ArrowUp:'u',w:'u',W:'u',ArrowDown:'d',s:'d',S:'d',ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r'};
 addEventListener('keydown',e=>{if(G&&!G.over&&KEYS[e.key]){G.want=DIRS[KEYS[e.key]];e.preventDefault()}});
 document.querySelectorAll('.dpad [data-d]').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();if(G)G.want=DIRS[b.dataset.d]}));
@@ -242,7 +237,6 @@ cv.addEventListener('touchstart',e=>{t0=e.touches[0]},{passive:true});
 cv.addEventListener('touchend',e=>{if(!t0||!G)return;const t=e.changedTouches[0],dx=t.clientX-t0.clientX,dy=t.clientY-t0.clientY;
   if(Math.max(Math.abs(dx),Math.abs(dy))>20)G.want=DIRS[Math.abs(dx)>Math.abs(dy)?(dx>0?'r':'l'):(dy>0?'d':'u')]});
 
-/* ===================== 5. TEACHER PORTAL ===================== */
 let tab='q',editQ=-1,fileImg=null;
 const teacherHTML=()=>`<div class="card"><h1>👩‍🏫 Teacher Dashboard</h1>
  <nav class="tabs">${[['q','Questions'],['a','Student links'],['t','Theme'],['s','Results']].map(([k,l])=>`<button class="btn ${tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}
@@ -304,7 +298,6 @@ document.addEventListener('change',e=>{
   if(map[id]){t[map[id]]=v;save();toast('Theme saved')}
 });
 
-/* ===================== 6. ACTIONS ===================== */
 const ACT={
   pin(){openModal(`<h2>Teacher PIN</h2><input id="pinin" type="password" inputmode="numeric" placeholder="PIN (default 1234)"><br><br><button class="btn pink" data-act="pinok">Enter</button><button class="btn" data-act="close">Cancel</button>`);setTimeout(()=>$('pinin')&&$('pinin').focus(),50)},
   pinok(){if($('pinin').value===db.pin){closeModal();renderT()}else toast('Wrong PIN')},
