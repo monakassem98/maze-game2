@@ -1,7 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MazeQuest: Classroom Chase</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
@@ -45,115 +43,97 @@ small,.muted{opacity:.75;font-weight:400}
 @keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 18px;border-radius:99px;z-index:30}
 @media (prefers-reduced-motion:reduce){#conf span{animation:none;display:none}}
-</style>
-</head>
-<body>
+</style></head><body>
 <main>
-<section id="home">
+<section id="home" hidden>
   <div class="card big"><h1>🧭 MazeQuest</h1><div>Classroom Chase</div></div>
-  <div class="card">
-    <h2>Student Enter</h2>
-    <label style="font-size:1rem;text-align:left">Your Name:
-      <input id="student_input_name" placeholder="Type your name here..." autocomplete="name">
-    </label>
-    <label style="font-size:1rem;text-align:left;margin-top:10px">Game Difficulty:
-      <select id="game_difficulty" style="margin-top:6px;font-weight:700">
-        <option value="easy" selected>🟢 Easy (Slow &amp; Relaxed)</option>
-        <option value="medium">🟡 Medium (Normal Speed)</option>
-        <option value="hard">🔴 Hard (Fast / Original Speed)</option>
-      </select>
-    </label>
-    <label class="row" style="justify-content:center;margin:14px 0">
-      <input type="checkbox" id="home_snd" checked style="width:24px;height:24px"> Sound On
-    </label>
-    <button class="btn pink" data-act="start_as_student" style="width:100%;font-size:1.2rem">Play Game 🚀</button>
-  </div>
-  <div class="card" style="text-align:center">
-    <button class="btn sm" data-act="pin">Teacher Login 👩‍🏫</button>
-  </div>
+  <div class="card"><p>Students: open the personal link your teacher gave you.</p>
+  <button class="btn pink" data-act="pin">Teacher login</button></div>
 </section>
-
+<section id="denied" hidden><div class="card big">🚫<h2>Access Denied</h2><p>Please ask your teacher for your unique access link.</p></div></section>
+<section id="gate" hidden></section>
 <section id="teacher" hidden></section>
-
 <section id="game" hidden>
-  <div id="hud"></div>
-  <canvas id="cv" width="600" height="440" aria-label="Maze"></canvas>
-  <div class="dpad">
-    <button class="btn" data-d="u">⬆️</button>
-    <button class="btn" data-d="l">⬅️</button>
-    <button class="btn" data-d="d">⬇️</button>
-    <button class="btn" data-d="r">➡️</button>
-  </div>
-  <div style="text-align:center">
-    <button class="btn sm" data-act="mute">🔊 Sound</button>
-    <button class="btn sm" data-act="quit">Quit</button>
-  </div>
+  <div id="hud"></div><canvas id="cv" width="600" height="440" aria-label="Maze"></canvas>
+  <div class="dpad"><button class="btn" data-d="u">⬆️</button><button class="btn" data-d="l">⬅️</button><button class="btn" data-d="d">⬇️</button><button class="btn" data-d="r">➡️</button></div>
+  <div style="text-align:center"><button class="btn sm" data-act="mute">🔊 Sound</button><button class="btn sm" data-act="quit">Quit</button></div>
 </section>
-
 <section id="result" hidden></section>
 </main>
-
-<div id="modal" class="ov" hidden><div class="card" id="mbox"></div></div>
-<div id="conf"></div>
-<div id="toast" hidden></div>
+<div id="modal" class="ov" hidden><div class="card" id="mbox"></div></div><div id="conf"></div><div id="toast" hidden></div>
 
 <script>
 "use strict";
-
+/* ===================== 1. STORE ===================== */
 const KEY='mazequest-v1', $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const THEMES={
  space:{wall:'#5b4bff',bg:'#14123a',player:'🚀',item:'⭐',chaser:'👾'},
  jungle:{wall:'#2f9e5b',bg:'#e3f8cf',player:'🐒',item:'🍌',chaser:'🐊'},
  ocean:{wall:'#1c8fd6',bg:'#d2f3ff',player:'🐠',item:'🐚',chaser:'🦀'},
- candy:{wall:'#ff5fa2',bg:'#fff0f7',player:'🧁',item:'🍬',chaser:'🐻'}
-};
-
-const defaults=()=>({
- pin:'1234',
- attempts:[],
- theme:{...THEMES.space},
- questions:[
-  {id:1,q:'What is 7 × 8?',c:['54','56','64','49'],a:1,e:'7 × 8 = 56. Try 7 × 4 = 28, then double it!',img:''},
-  {id:2,q:'Which planet is called the Red Planet?',c:['Venus','Jupiter','Mars','Mercury'],a:2,e:'Mars looks red because of iron-rich dust.',img:''},
-  {id:3,q:'What do plants need to make their food?',c:['Sunlight, water and air','Only soil','Moonlight','Sugar'],a:0,e:'Photosynthesis uses sunlight, water and carbon dioxide.',img:''}
- ]
-});
-
-function load(){
-  try{return Object.assign(defaults(),JSON.parse(localStorage.getItem(KEY)||'{}'))}
-  catch(e){return defaults()}
-}
-function save(){
-  try{localStorage.setItem(KEY,JSON.stringify(db))}
-  catch(e){toast('Storage full. Use smaller images.')}
-}
+ candy:{wall:'#ff5fa2',bg:'#fff0f7',player:'🧁',item:'🍬',chaser:'🐻'}};
+const defaults=()=>({pin:'1234',students:[],attempts:[],theme:{...THEMES.space},questions:[
+ {id:1,q:'What is 7 × 8?',c:['54','56','64','49'],a:1,e:'7 × 8 = 56. Try 7 × 4 = 28, then double it!',img:''},
+ {id:2,q:'Which planet is called the Red Planet?',c:['Venus','Jupiter','Mars','Mercury'],a:2,e:'Mars looks red because of iron-rich dust.',img:''},
+ {id:3,q:'What do plants need to make their food?',c:['Sunlight, water and air','Only soil','Moonlight','Sugar'],a:0,e:'Photosynthesis uses sunlight, water and carbon dioxide.',img:''}]});
+function load(){try{return Object.assign(defaults(),JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){return defaults()}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Storage full. Use smaller images.')}}
 let db=load();
-
 function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,2500)}
-function show(id){['home','teacher','game','result'].forEach(i=>$(i).hidden=i!==id)}
+function show(id){['home','denied','gate','teacher','game','result'].forEach(i=>$(i).hidden=i!==id)}
 function openModal(h){$('mbox').innerHTML=h;$('modal').hidden=false}
 function closeModal(){$('modal').hidden=true}
 const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
 
-/* AUDIO */
+/* ===================== 2. AUDIO ===================== */
 let AC,muted=false,mus;
-function tone(f,d,type='triangle',t0=0,v=.13){
-  if(muted)return;
-  try{
-    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
-    const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+t0;
-    o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,t);
-    g.gain.exponentialRampToValueAtTime(.001,t+d);
-    o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d);
-  }catch(e){}
-}
+function tone(f,d,type='triangle',t0=0,v=.13){if(muted)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+t0;
+ o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d)}catch(e){}}
 const seq=(n,d=.15,type)=>n.forEach((f,i)=>tone(f,d+.1,type,i*d));
 const sfx={star:()=>tone(900,.08),right:()=>seq([523,659,784,1047]),wrong:()=>tone(160,.35,'sawtooth',0,.07),hit:()=>seq([300,200,130],.1,'square'),win:()=>seq([523,659,784,1047,784,1047,1319],.14)};
 function music(on){clearInterval(mus);if(!on)return;const n=[523,587,659,784,880,784,659,587];let i=0;mus=setInterval(()=>tone(n[i++%8],.2,'sine',0,.04),260)}
 
-/* GAME ENGINE */
+/* ===================== 3. SELF-CONTAINED SIGNED LINKS ===================== */
+const SECRET='mazequest-secure-key-2026';
+const b64=s=>btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const unb64=s=>decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))));
+async function sign(msg){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const h=new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg)));return Array.from(h.slice(0,12),x=>x.toString(16).padStart(2,'0')).join('')}
+let cfg=null;
+const QS=()=>cfg?cfg.q:db.questions,TH=()=>cfg?cfg.t:db.theme;
+async function makeLink(name,exp){
+  const q=db.questions.map(x=>({...x,img:x.img.startsWith('data:')?'':x.img}));
+  const pl=b64(JSON.stringify({e:exp,q:{q,t:db.theme}}));
+  return location.href.split(/[?#]/)[0]+'?student='+encodeURIComponent(name)+'&code='+pl+'.'+await sign(name+'|'+pl);
+}
+async function verify(who,code){
+  try{const [pl,sig]=code.split('.');if(!who||!pl||sig!==await sign(who+'|'+pl))return false;
+    const d=JSON.parse(unb64(pl));if(d.e&&Date.now()>d.e)return false;cfg=d.q;return true}catch(e){return false}
+}
+async function boot(){
+  const p=new URLSearchParams(location.search),who=p.get('student'),code=p.get('code');
+  if(!who&&!code)return show('home');
+  (await verify(who,code||''))?gate({name:who}):show('denied');
+}
+function gate(s){
+  const n=db.attempts.filter(a=>a.student===s.name).length+1;
+  $('gate').innerHTML=`<div class="card big">🧭<h1>Ready, ${esc(s.name)}?</h1><p>Attempt #${n}</p>
+  <label style="font-size:1rem;text-align:left">Your name<input id="gname" value="${esc(s.name)}"></label>
+  <label style="font-size:1rem;text-align:left;margin-top:10px">Game Difficulty:
+    <select id="gdiff" style="margin-top:6px;font-weight:700">
+      <option value="easy" selected>🟢 Easy (Slow &amp; Relaxed)</option>
+      <option value="medium">🟡 Medium (Normal Speed)</option>
+      <option value="hard">🔴 Hard (Fast / Original)</option>
+    </select>
+  </label>
+  <label class="row" style="justify-content:center"><input type="checkbox" id="gsnd" checked style="width:24px;height:24px"> Sound on</label>
+  <p style="font-size:1rem">Collect ${esc(TH().item)}, dodge ${esc(TH().chaser)}, and answer the ❓ gates!</p>
+  <button class="btn pink" data-act="go" data-n="${esc(s.name)}">Let's go!</button></div>`;
+  show('gate');
+}
+
+/* ===================== 4. GAME ENGINE ===================== */
 const MAP=["###############","#P.....#......#","#.###.#.#.###.#","#.#.........#.#","#...##.#.##...#","###.#..C..#.###","#...##.#.##...#","#.#.........#.#","#.###.#.#.###.#","#.....#C......#","###############"];
 const W=15,H=11,S=40,cv=$('cv'),ctx=cv.getContext('2d');
 const open=(x,y)=>MAP[y]&&MAP[y][x]!==undefined&&MAP[y][x]!=='#';
@@ -161,17 +141,12 @@ const DIRS={u:{x:0,y:-1},d:{x:0,y:1},l:{x:-1,y:0},r:{x:1,y:0}},ZERO={x:0,y:0};
 let G=null,last=null;
 
 function startGame(name,preview,difficulty='easy'){
-  last={name,preview,difficulty};
-  closeModal();
-  const qs=shuffle(db.questions.slice()).slice(0,6),stars=new Set(),free=[],ch=[];
-  MAP.forEach((r,y)=>[...r].forEach((c,x)=>{
-    if(c==='C')ch.push({x,y,sx:x,sy:y});
-    if(c!=='#'){stars.add(x+','+y);if(Math.abs(x-1)+Math.abs(y-1)>5&&c!=='C')free.push(x+','+y)}
-  }));
+  last={name,preview,difficulty};closeModal();
+  const qs=shuffle(QS().slice()).slice(0,6),stars=new Set(),free=[],ch=[];
+  MAP.forEach((r,y)=>[...r].forEach((c,x)=>{if(c==='C')ch.push({x,y,sx:x,sy:y});if(c!=='#'){stars.add(x+','+y);if(Math.abs(x-1)+Math.abs(y-1)>5&&c!=='C')free.push(x+','+y)}}));
   stars.delete('1,1');
-  const portals=new Map();
-  shuffle(free).slice(0,qs.length).forEach((k,i)=>{portals.set(k,qs[i]);stars.delete(k)});
-  
+  const portals=new Map();shuffle(free).slice(0,qs.length).forEach((k,i)=>{portals.set(k,qs[i]);stars.delete(k)});
+
   const speeds={
     easy:   { chaser: 750, player: 200 },
     medium: { chaser: 520, player: 180 },
@@ -183,24 +158,16 @@ function startGame(name,preview,difficulty='easy'){
      t0:Date.now(),lp:0,lc:0,boost:0,freeze:0,inv:0,paused:false,over:false};
   show('game');hud();music(!muted);requestAnimationFrame(loop);
 }
-
 function hud(){$('hud').innerHTML=`<span>${'❤️'.repeat(Math.max(G.lives,0))}</span><span>⭐ ${G.score}</span><span>❓ ${G.portals.size} left</span>`}
-
 function loop(){if(!G||G.over)return;requestAnimationFrame(loop);if(!G.paused)step();draw()}
-
 function step(){
   const now=Date.now(),p=G.p;
-  if(now-G.lp>(G.boost>now?105:G.spd.player)){
-    G.lp=now;
-    for(const d of [G.want,G.dir]){
-      if((d.x||d.y)&&open(p.x+d.x,p.y+d.y)){G.dir=d;p.x+=d.x;p.y+=d.y;collect();break}
-    }
-  }
+  if(now-G.lp>(G.boost>now?105:G.spd.player)){G.lp=now;
+    for(const d of [G.want,G.dir])if((d.x||d.y)&&open(p.x+d.x,p.y+d.y)){G.dir=d;p.x+=d.x;p.y+=d.y;collect();break}}
   if(G.over||G.paused)return;
   if(now>G.freeze&&now-G.lc>G.spd.chaser){G.lc=now;G.ch.forEach(moveChaser)}
   if(now>G.inv&&now>G.freeze&&G.ch.some(c=>c.x===p.x&&c.y===p.y))hurt();
 }
-
 function moveChaser(c){
   const p=G.p,opts=Object.values(DIRS).filter(d=>open(c.x+d.x,c.y+d.y)&&!(d.x===-c.lx&&d.y===-c.ly));
   const list=opts.length?opts:Object.values(DIRS).filter(d=>open(c.x+d.x,c.y+d.y));
@@ -208,24 +175,20 @@ function moveChaser(c){
   const d=Math.random()<.7?list.reduce((a,b)=>dist(b)<dist(a)?b:a):list[Math.random()*list.length|0];
   c.x+=d.x;c.y+=d.y;c.lx=d.x;c.ly=d.y;
 }
-
 function collect(){
   const k=G.p.x+','+G.p.y;
   if(G.stars.delete(k)){G.score+=10;G.got++;sfx.star();hud()}
   if(G.portals.has(k)){G.paused=true;ask(G.portals.get(k),k)}
 }
-
 function hurt(){
   G.lives--;sfx.hit();G.p={x:1,y:1};G.dir=G.want=ZERO;G.inv=Date.now()+2000;
   G.ch.forEach(c=>{c.x=c.sx;c.y=c.sy});hud();if(G.lives<=0)end(false);
 }
-
 function ask(q,k){
   G.cur=q;G.curKey=k;
   openModal(`<h2>${esc(q.q)}</h2>${q.img?`<img class="qimg" src="${esc(q.img)}" alt="">`:''}`+
     q.c.map((c,i)=>`<button class="btn ans" data-act="ans" data-i="${i}">${'ABCD'[i]}. ${esc(c)}</button>`).join(''));
 }
-
 function answer(i){
   const q=G.cur,ok=i===q.a;
   G.answers.push({id:q.id,q:q.q,chosen:q.c[i],correct:q.c[q.a],ok,e:q.e});
@@ -236,34 +199,24 @@ function answer(i){
     :`<div class="big bad">Oops!</div><p>The answer was <b>${esc(q.c[q.a])}</b>.</p><p>💡 ${esc(q.e||'Keep trying!')}</p>`)
   ;$('mbox').insertAdjacentHTML('beforeend','<button class="btn mint" data-act="cont">Keep going</button>');
 }
-
 function cont(){
   closeModal();const now=Date.now();
   if(G.bonus){G.boost=now+5000;G.freeze=now+4000}
   G.paused=false;G.lp=G.lc=now;
   if(G.lives<=0)end(false);else if(!G.portals.size)end(true);
 }
-
 function draw(){
-  const th=db.theme,now=Date.now();
-  ctx.fillStyle=th.bg;ctx.fillRect(0,0,cv.width,cv.height);
+  const th=TH(),now=Date.now();ctx.fillStyle=th.bg;ctx.fillRect(0,0,cv.width,cv.height);
   ctx.fillStyle=th.wall;
-  MAP.forEach((r,y)=>[...r].forEach((c,x)=>{
-    if(c==='#'){ctx.beginPath();ctx.roundRect?ctx.roundRect(x*S+2,y*S+2,S-4,S-4,10):ctx.rect(x*S+2,y*S+2,S-4,S-4);ctx.fill()}
-  }));
+  MAP.forEach((r,y)=>[...r].forEach((c,x)=>{if(c==='#'){ctx.beginPath();ctx.roundRect?ctx.roundRect(x*S+2,y*S+2,S-4,S-4,10):ctx.rect(x*S+2,y*S+2,S-4,S-4);ctx.fill()}}));
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='16px serif';
   const at=(k,e)=>{const [x,y]=k.split(',');ctx.fillText(e,x*S+S/2,y*S+S/2)};
   G.stars.forEach(k=>at(k,th.item));
   ctx.font='28px serif';const pulse=1+Math.sin(now/200)*.12;
-  G.portals.forEach((q,k)=>{
-    const [x,y]=k.split(',');
-    ctx.fillStyle='#ffd23f';ctx.beginPath();ctx.arc(x*S+S/2,y*S+S/2,S/2*pulse-2,0,7);ctx.fill();
-    ctx.fillStyle='#2a1f5c';ctx.fillText('❓',x*S+S/2,y*S+S/2);
-  });
+  G.portals.forEach((q,k)=>{const [x,y]=k.split(',');ctx.fillStyle='#ffd23f';ctx.beginPath();ctx.arc(x*S+S/2,y*S+S/2,S/2*pulse-2,0,7);ctx.fill();ctx.fillStyle='#2a1f5c';ctx.fillText('❓',x*S+S/2,y*S+S/2)});
   ctx.globalAlpha=now<G.freeze?.45:1;G.ch.forEach(c=>ctx.fillText(th.chaser,c.x*S+S/2,c.y*S+S/2));ctx.globalAlpha=1;
   if(now>G.inv||(now/120|0)%2){ctx.font=G.boost>now?'34px serif':'30px serif';ctx.fillText(th.player,G.p.x*S+S/2,G.p.y*S+S/2)}
 }
-
 function end(win){
   if(G.over)return;G.over=true;music(false);
   if(win)G.score+=G.lives*25;
@@ -273,179 +226,118 @@ function end(win){
   if(!G.preview){db.attempts.push(rec);save()}
   (win?sfx.win:sfx.hit)();if(win)confetti();
   $('result').innerHTML=`<div class="card big">${win?'🏆':'💪'}<h1>${win?'You did it!':'Good try!'}</h1>
-    <div>${'⭐'.repeat(sg)}${'☆'.repeat(3-sg)}</div><p>Score <b>${G.score}</b> · Time ${fmt(rec.time)} · Attempt #${n}${G.preview?' (preview, not saved)':''}</p>
-    <button class="btn pink" data-act="again">Play again</button>
-    <button class="btn" data-act="home_btn">Main Menu</button>
-    ${G.preview?'<button class="btn" data-act="back">Back to dashboard</button>':''}</div>
-    <div class="card"><h2>Question review</h2>${G.answers.map(a=>`<p>${a.ok?'✅':'❌'} <b>${esc(a.q)}</b><br>${a.ok?`<span class="good">${esc(a.correct)}</span>`:`<span class="bad">You chose: ${esc(a.chosen)}</span><br>Correct: ${esc(a.correct)}<br><small>💡 ${esc(a.e||'')}</small>`}</p>`).join('')||'<p>No questions reached this time.</p>'}</div>`;
+   <div>${'⭐'.repeat(sg)}${'☆'.repeat(3-sg)}</div><p>Score <b>${G.score}</b> · Time ${fmt(rec.time)} · Attempt #${n}${G.preview?' (preview, not saved)':''}</p>
+   <button class="btn pink" data-act="again">Play again</button>${G.preview?'<button class="btn" data-act="back">Back to dashboard</button>':''}</div>
+   <div class="card"><h2>Question review</h2>${G.answers.map(a=>`<p>${a.ok?'✅':'❌'} <b>${esc(a.q)}</b><br>${a.ok?`<span class="good">${esc(a.correct)}</span>`:`<span class="bad">You chose: ${esc(a.chosen)}</span><br>Correct: ${esc(a.correct)}<br><small>💡 ${esc(a.e||'')}</small>`}</p>`).join('')||'<p>No questions reached this time.</p>'}</div>`;
   closeModal();show('result');
 }
+function confetti(){const c=$('conf');for(let i=0;i<45;i++){const s=document.createElement('span');s.textContent=['🎉','✨','⭐','🎈'][i%4];s.style.left=Math.random()*100+'vw';s.style.animationDelay=Math.random()*1.5+'s';c.appendChild(s)}setTimeout(()=>c.innerHTML='',5500)}
 
-function confetti(){
-  const c=$('conf');
-  for(let i=0;i<45;i++){
-    const s=document.createElement('span');s.textContent=['🎉','✨','⭐','🎈'][i%4];
-    s.style.left=Math.random()*100+'vw';s.style.animationDelay=Math.random()*1.5+'s';c.appendChild(s);
-  }
-  setTimeout(()=>c.innerHTML='',5500);
-}
-
-/* CONTROLS */
+/* Controls */
 const KEYS={ArrowUp:'u',w:'u',W:'u',ArrowDown:'d',s:'d',S:'d',ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r'};
 addEventListener('keydown',e=>{if(G&&!G.over&&KEYS[e.key]){G.want=DIRS[KEYS[e.key]];e.preventDefault()}});
 document.querySelectorAll('.dpad [data-d]').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();if(G)G.want=DIRS[b.dataset.d]}));
 let t0=null;
 cv.addEventListener('touchstart',e=>{t0=e.touches[0]},{passive:true});
-cv.addEventListener('touchend',e=>{
-  if(!t0||!G)return;
-  const t=e.changedTouches[0],dx=t.clientX-t0.clientX,dy=t.clientY-t0.clientY;
-  if(Math.max(Math.abs(dx),Math.abs(dy))>20)G.want=DIRS[Math.abs(dx)>Math.abs(dy)?(dx>0?'r':'l'):(dy>0?'d':'u')];
-});
+cv.addEventListener('touchend',e=>{if(!t0||!G)return;const t=e.changedTouches[0],dx=t.clientX-t0.clientX,dy=t.clientY-t0.clientY;
+  if(Math.max(Math.abs(dx),Math.abs(dy))>20)G.want=DIRS[Math.abs(dx)>Math.abs(dy)?(dx>0?'r':'l'):(dy>0?'d':'u')]});
 
-/* TEACHER PORTAL */
+/* ===================== 5. TEACHER PORTAL ===================== */
 let tab='q',editQ=-1,fileImg=null;
 const teacherHTML=()=>`<div class="card"><h1>👩‍🏫 Teacher Dashboard</h1>
- <nav class="tabs">${[['q','Questions'],['t','Theme'],['s','Results']].map(([k,l])=>`<button class="btn ${tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}
- <button class="btn mint" data-act="preview">Preview Game</button><button class="btn" data-act="logout">Exit to Home</button></nav></div><div id="tbody"></div>`;
-
-function renderT(){
-  $('teacher').innerHTML=teacherHTML();$('tbody').innerHTML={q:rQ,t:rT,s:rS}[tab]();
-  show('teacher');
-}
-
+ <nav class="tabs">${[['q','Questions'],['a','Student links'],['t','Theme'],['s','Results']].map(([k,l])=>`<button class="btn ${tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}
+ <button class="btn mint" data-act="preview">Preview game</button><button class="btn" data-act="logout">Log out</button></nav></div><div id="tbody"></div>`;
+function renderT(){$('teacher').innerHTML=teacherHTML();$('tbody').innerHTML={q:rQ,a:rA,t:rT,s:rS}[tab]();show('teacher')}
 function rQ(){
   const e=db.questions[editQ]||{q:'',c:['','','',''],a:0,e:'',img:''};fileImg=null;
-  return `<div class="card"><h2>${editQ>=0?'Edit':'New'} Question</h2>
+  return `<div class="card"><h2>${editQ>=0?'Edit':'New'} question</h2>
   <label>Question<input id="qp" value="${esc(e.q)}"></label>
   ${e.c.map((c,i)=>`<label class="row"><input type="radio" name="cr" value="${i}" ${e.a===i?'checked':''} aria-label="Correct answer ${i+1}"><input id="c${i}" placeholder="Choice ${i+1}" value="${esc(c)}"></label>`).join('')}
-  <small>Select the radio button beside the correct choice.</small>
+  <small>Select the circle beside the correct choice.</small>
   <label>Explanation (shown after a wrong answer)<input id="qe" value="${esc(e.e)}"></label>
   <label>Image URL (optional)<input id="qi" value="${esc(e.img.startsWith('data:')?'':e.img)}"></label>
-  <label>Or Upload Image<input type="file" id="qf" accept="image/*"></label><div id="pv">${e.img?`<img class="qimg" src="${esc(e.img)}" alt="">`:''}</div>
-  <button class="btn pink" data-act="saveQ">Save Question</button>${editQ>=0?'<button class="btn" data-act="cancelQ">Cancel</button>':''}</div>
-  <div class="card"><h2>${db.questions.length} Questions Saved</h2>${db.questions.map((q,i)=>`<p><b>${i+1}. ${esc(q.q)}</b>${q.img?'🖼':''}<br><button class="btn sm" data-act="editQ" data-i="${i}">Edit</button><button class="btn sm pink" data-act="delQ" data-i="${i}">Delete</button></p>`).join('')}</div>`;
+  <label>Or upload an image<input type="file" id="qf" accept="image/*"></label><div id="pv">${e.img?`<img class="qimg" src="${esc(e.img)}" alt="">`:''}</div>
+  <button class="btn pink" data-act="saveQ">Save question</button>${editQ>=0?'<button class="btn" data-act="cancelQ">Cancel</button>':''}</div>
+  <div class="card"><h2>${db.questions.length} questions</h2>${db.questions.map((q,i)=>`<p>${esc(q.q)}${q.img?'🖼️':''}<br><button class="btn sm" data-act="editQ" data-i="${i}">Edit</button><button class="btn sm pink" data-act="delQ" data-i="${i}">Delete</button></p>`).join('')}</div>`;
 }
-
+function rA(){
+  return `<div class="card"><h2>Create student links</h2>
+  <label>Student names or IDs (one per line)<textarea id="names" rows="4"></textarea></label>
+  <label>Link lasts (hours, 0 = never expires)<input id="hrs" type="number" min="0" value="0"></label>
+  <button class="btn pink" data-act="gen">Create links</button><button class="btn" data-act="regen">Refresh all links</button><p><small>Links carry a copy of your questions and theme. Finish editing first, then create or refresh links. Uploaded images stay on this device; use image URLs for links.</small></p></div>
+  <div class="card wrap"><table><tr><th>Student</th><th>Unique link</th><th>Expires</th><th></th></tr>
+  ${db.students.map((s,i)=>`<tr><td>${esc(s.name)}</td><td><input readonly value="${esc(s.link\vert{}\vert{}'')}" onclick="this.select()"></td><td>${s.exp?new Date(s.exp).toLocaleString():'Never'}</td>
+  <td><button class="btn sm" data-act="copy" data-i="${i}">Copy</button><button class="btn sm pink" data-act="delS" data-i="${i}">Remove</button></td></tr>`).join('')||'<tr><td colspan="4">No students yet.</td></tr>'}</table></div>
+  <div class="card"><label>Change teacher PIN<input id="npin" value="${esc(db.pin)}" inputmode="numeric"></label><button class="btn" data-act="setpin">Save PIN</button></div>`;
+}
 function rT(){
   const t=db.theme;
-  return `<div class="card"><h2>Lesson Theme</h2>${Object.keys(THEMES).map(k=>`<button class="btn" data-act="preset" data-k="${k}">${THEMES[k].player}${k}</button>`).join('')}
-  <label class="row">Wall Colour <input type="color" id="tw" value="${t.wall}"></label>
+  return `<div class="card"><h2>Lesson theme</h2>${Object.keys(THEMES).map(k=>`<button class="btn" data-act="preset" data-k="${k}">${THEMES[k].player}${k}</button>`).join('')}
+  <label class="row">Wall colour <input type="color" id="tw" value="${t.wall}"></label>
   <label class="row">Background <input type="color" id="tb" value="${t.bg}"></label>
-  <label>Player Avatar (emoji)<input id="tp" value="${esc(t.player)}"></label>
+  <label>Player avatar (emoji)<input id="tp" value="${esc(t.player)}"></label>
   <label>Collectible (emoji)<input id="ti" value="${esc(t.item)}"></label>
-  <label>Friendly Chaser (emoji)<input id="tc" value="${esc(t.chaser)}"></label>
-  <button class="btn pink" data-act="preview">Try Theme</button></div>`;
+  <label>Friendly chaser (emoji)<input id="tc" value="${esc(t.chaser)}"></label>
+  <button class="btn pink" data-act="preview">Try it</button></div>`;
 }
-
 function rS(){
   const by={};db.attempts.forEach(a=>(by[a.student]=by[a.student]||[]).push(a));
-  const rows=Object.entries(by).map(([n,l])=>{
-    const miss=l.flatMap(a=>a.answers.filter(x=>!x.ok));
-    return `<tr><td><b>${esc(n)}</b></td><td>${l.length}</td><td>${Math.max(...l.map(a=>a.score))}</td><td>${l.at(-1).score}</td><td>${l.map(a=>fmt(a.time)).join(', ')}</td>
-    <td>${miss.map(x=>`${esc(x.q)} <span class="bad">(chose ${esc(x.chosen)})</span>`).join('<br>')||'—'}</td></tr>`;
-  }).join('');
-
-  const qb={};db.attempts.forEach(a=>a.answers.forEach(x=>{
-    const o=qb[x.q]=qb[x.q]||{n:0,m:0,w:{}};o.n++;
-    if(!x.ok){o.m++;o.w[x.chosen]=(o.w[x.chosen]||0)+1}
-  }));
-  const trouble=Object.entries(qb).filter(([,o])=>o.m).sort((a,b)=>b[1].m-a[1].m).map(([q,o])=>{
-    const top=Object.entries(o.w).sort((a,b)=>b[1]-a[1])[0];
-    return `<p><b>${esc(q)}</b><br>Missed ${o.m} of ${o.n} times. Most common wrong answer: <span class="bad">${esc(top[0])}</span> (${top[1]}×)</p>`;
-  }).join('');
-
-  return `<div class="card">
-    <button class="btn mint" data-act="csv">Export Results to CSV</button>
-    <button class="btn" data-act="clear">Clear Results History</button>
-  </div>
-  <div class="card wrap">
-    <table>
-      <tr><th>Student</th><th>Attempts</th><th>Best</th><th>Latest</th><th>Time per Run</th><th>Missed Questions</th></tr>
-      ${rows||'<tr><td colspan="6">No student attempts recorded yet.</td></tr>'}
-    </table>
-  </div>
-  <div class="card"><h2>Common Pitfalls</h2>${trouble||'<p>No incorrect answers logged yet.</p>'}</div>`;
+  const rows=Object.entries(by).map(([n,l])=>{const miss=l.flatMap(a=>a.answers.filter(x=>!x.ok));
+    return `<tr><td>${esc(n)}</td><td>${l.length}</td><td>${Math.max(...l.map(a=>a.score))}</td><td>${l.at(-1).score}</td><td>${l.map(a=>fmt(a.time)).join(', ')}</td>
+    <td>${miss.map(x=>`${esc(x.q)} <span class="bad">(chose ${esc(x.chosen)})</span>`).join('<br>')||'—'}</td></tr>`}).join('');
+  const qb={};db.attempts.forEach(a=>a.answers.forEach(x=>{const o=qb[x.q]=qb[x.q]||{n:0,m:0,w:{}};o.n++;if(!x.ok){o.m++;o.w[x.chosen]=(o.w[x.chosen]||0)+1}}));
+  const trouble=Object.entries(qb).filter(([,o])=>o.m).sort((a,b)=>b[1].m-a[1].m).map(([q,o])=>{const top=Object.entries(o.w).sort((a,b)=>b[1]-a[1])[0];
+    return `<p><b>${esc(q)}</b><br>Missed ${o.m} of ${o.n}. Most common wrong answer: <span class="bad">${esc(top[0])}</span> (${top[1]}×)</p>`}).join('');
+  return `<div class="card"><button class="btn mint" data-act="csv">Export results to CSV</button><button class="btn" data-act="clear">Clear results</button></div>
+  <div class="card wrap"><table><tr><th>Student</th><th>Attempts</th><th>Best</th><th>Latest</th><th>Time per run</th><th>Missed questions</th></tr>${rows||'<tr><td colspan="6">No attempts yet.</td></tr>'}</table></div>
+  <div class="card"><h2>Common pitfalls</h2>${trouble||'<p>Nothing missed yet.</p>'}</div>`;
 }
-
 function csv(){
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
   return [['Student','Attempt','Date','Score','Stars','Seconds','Result','Missed (wrong answer chosen)'],
-   ...db.attempts.map(a=>[a.student,a.attempt,a.date,a.score,a.stars,a.time,a.win?'Won':'Lost',a.answers.filter(x=>!x.ok).map(x=>x.q+' -> '+x.chosen).join(' | ')])]
-   .map(r=>r.map(q).join(',')).join('\n');
+   ...db.attempts.map(a=>[a.student,a.attempt,a.date,a.score,a.stars,a.time,a.win?'Won':'Lost',a.answers.filter(x=>!x.ok).map(x=>x.q+' -> '+x.chosen).join(' | ')])].map(r=>r.map(q).join(',')).join('\n');
 }
-
 document.addEventListener('change',e=>{
   const id=e.target.id,t=db.theme,v=e.target.value;
-  if(id==='qf'&&e.target.files[0]){
-    const r=new FileReader();
-    r.onload=()=>{fileImg=r.result;$('pv').innerHTML=`<img class="qimg" src="${fileImg}" alt="">`};
-    r.readAsDataURL(e.target.files[0]);
-  }
+  if(id==='qf'&&e.target.files[0]){const r=new FileReader();r.onload=()=>{fileImg=r.result;$('pv').innerHTML=`<img class="qimg" src="${fileImg}" alt="">`};r.readAsDataURL(e.target.files[0])}
   const map={tw:'wall',tb:'bg',tp:'player',ti:'item',tc:'chaser'};
   if(map[id]){t[map[id]]=v;save();toast('Theme saved')}
 });
 
-/* GLOBAL EVENT HANDLERS */
+/* ===================== 6. ACTIONS ===================== */
 const ACT={
-  pin(){
-    openModal(`<h2>Teacher PIN</h2><input id="pinin" type="password" inputmode="numeric" placeholder="Enter PIN (default 1234)"><br><br><button class="btn pink" data-act="pinok">Enter</button><button class="btn" data-act="close">Cancel</button>`);
-    setTimeout(()=>$('pinin')&&$('pinin').focus(),50);
-  },
-  pinok(){
-    if($('pinin').value===db.pin){closeModal();renderT()}
-    else toast('Wrong PIN');
-  },
-  close:closeModal,
-  logout(){show('home')},
-  home_btn(){show('home')},
-  start_as_student(){
-    const name=$('student_input_name').value.trim();
-    if(!name)return toast('Please enter your name first!');
-    muted=!$('home_snd').checked;
-    const diff = $('game_difficulty')?.value || 'easy';
-    startGame(name,false,diff);
-  },
+  pin(){openModal(`<h2>Teacher PIN</h2><input id="pinin" type="password" inputmode="numeric" placeholder="PIN (default 1234)"><br><br><button class="btn pink" data-act="pinok">Enter</button><button class="btn" data-act="close">Cancel</button>`);setTimeout(()=>$('pinin')&&$('pinin').focus(),50)},
+  pinok(){if($('pinin').value===db.pin){closeModal();renderT()}else toast('Wrong PIN')},
+  close:closeModal,logout(){show('home')},
   tab(d){tab=d.t;editQ=-1;renderT()},
-  saveQ(){
-    const c=[0,1,2,3].map(i=>$('c'+i).value.trim()),p=$('qp').value.trim();
+  saveQ(){const c=[0,1,2,3].map(i=>$('c'+i).value.trim()),p=$('qp').value.trim();
     if(!p||c.some(x=>!x))return toast('Fill in the question and all 4 choices');
     const old=db.questions[editQ],img=fileImg||$('qi').value.trim()||(old&&old.img.startsWith('data:')?old.img:'');
     const q={id:old?old.id:Date.now(),q:p,c,a:+document.querySelector('[name=cr]:checked').value,e:$('qe').value.trim(),img};
-    editQ>=0?db.questions[editQ]=q:db.questions.push(q);
-    editQ=-1;save();renderT();toast('Question saved!');
-  },
-  editQ(d){editQ=+d.i;renderT();scrollTo(0,0)},
-  cancelQ(){editQ=-1;renderT()},
+    editQ>=0?db.questions[editQ]=q:db.questions.push(q);editQ=-1;save();renderT()},
+  editQ(d){editQ=+d.i;renderT();scrollTo(0,0)},cancelQ(){editQ=-1;renderT()},
   delQ(d){if(confirm('Delete this question?')){db.questions.splice(+d.i,1);save();renderT()}},
-  preset(d){db.theme={...THEMES[d.k]};save();renderT();toast('Theme updated')},
-  preview(){startGame('Preview',true,$('game_difficulty')?.value||'easy')},
-  back(){renderT()},
-  csv(){
-    openModal(`<h2>Results CSV</h2><textarea id="csvt" rows="8" readonly>${esc(csv())}</textarea>
-    <button class="btn mint" data-act="csvcopy">Copy</button><button class="btn" data-act="csvdl">Download .csv</button><button class="btn" data-act="close">Close</button>`);
-  },
+  async gen(){const names=$('names').value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean),h=+$('hrs').value||0;
+    for(const n of names)if(!db.students.some(s=>s.name===n)){const exp=h?Date.now()+h*36e5:0;db.students.push({name:n,exp,link:await makeLink(n,exp)})}
+    save();renderT()},
+  async regen(){for(const s of db.students)s.link=await makeLink(s.name,s.exp||0);save();renderT();toast('Links refreshed')},
+  copy(d){const l=db.students[+d.i].link||'';navigator.clipboard?.writeText(l).then(()=>toast('Link copied'),()=>toast('Select the link and copy it'))},
+  delS(d){db.students.splice(+d.i,1);save();renderT()},
+  setpin(){const v=$('npin').value.trim();if(v.length<3)return toast('Use at least 3 digits');db.pin=v;save();toast('PIN saved')},
+  preset(d){db.theme={...THEMES[d.k]};save();renderT()},
+  preview(){startGame('Preview',true,$('gdiff')?.value||'easy')},back(){renderT()},
+  csv(){openModal(`<h2>Results CSV</h2><textarea id="csvt" rows="8" readonly>${esc(csv())}</textarea>
+    <button class="btn mint" data-act="csvcopy">Copy</button><button class="btn" data-act="csvdl">Download .csv</button><button class="btn" data-act="close">Close</button>`)},
   csvcopy(){$('csvt').select();navigator.clipboard?.writeText($('csvt').value).then(()=>toast('Copied'),()=>document.execCommand('copy'))},
-  csvdl(){
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv()],{type:'text/csv'}));
-    a.download='mazequest-results.csv';a.click();
-  },
-  clear(){if(confirm('Delete ALL student attempt records?')){db.attempts=[];save();renderT()}},
+  csvdl(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv()],{type:'text/csv'}));a.download='mazequest-results.csv';a.click()},
+  clear(){if(confirm('Delete ALL attempt records?')){db.attempts=[];save();renderT()}},
+  go(d){const el=$('gname'),nm=(el&&el.value.trim())||d.n;muted=!$('gsnd').checked;const diff=$('gdiff')?.value||'easy';startGame(nm,false,diff)},
   ans(d){answer(+d.i)},cont,
   again(){startGame(last.name,last.preview,last.difficulty)},
   mute(d,b){muted=!muted;b.textContent=muted?'🔇 Muted':'🔊 Sound';music(!muted&&G&&!G.over)},
-  quit(){if(G)G.over=true;music(false);last&&last.preview?renderT():show('home')}
+  quit(){if(G)G.over=true;music(false);last&&last.preview?renderT():boot()}
 };
-
-document.addEventListener('click',e=>{
-  const a=e.target.closest('[data-act]');
-  if(a&&ACT[a.dataset.act])ACT[a.dataset.act](a.dataset,a);
-});
-document.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&e.target.id==='pinin')ACT.pinok();
-  if(e.key==='Enter'&&e.target.id==='student_input_name')ACT.start_as_student();
-});
-
-show('home');
-</script>
-</body>
-</html>
+document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(a&&ACT[a.dataset.act])ACT[a.dataset.act](a.dataset,a)});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='pinin')ACT.pinok()});
+boot();
+</script></body></html>
