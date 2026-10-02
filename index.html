@@ -16,13 +16,13 @@ h1,h2{margin:.2em 0;font-weight:700}h1{font-size:clamp(2rem,7vw,3.2rem)}
 .card{background:var(--card);border:3px solid var(--ink);border-radius:24px;padding:16px;margin:12px 0;box-shadow:0 6px 0 var(--ink)}
 .btn{font:inherit;font-weight:700;background:var(--sun);color:#2a1f5c;border:3px solid var(--ink);border-radius:999px;padding:10px 20px;margin:4px;cursor:pointer;box-shadow:0 4px 0 var(--ink)}
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
-.btn.pink{background:var(--pink);color:#fff}.btn.mint{background:var(--mint)}.btn.sm{padding:4px 12px;font-size:.85rem}
+.btn.pink{background:var(--pink)}.btn.mint{background:var(--mint)}.btn.sm{padding:4px 12px;font-size:.85rem}
 :focus-visible{outline:4px solid var(--pink);outline-offset:2px}
 label{display:block;margin:8px 0}label.row{display:flex;gap:8px;align-items:center}
 input:not([type=radio]):not([type=color]),textarea,select{width:100%;font:inherit;padding:8px 12px;border:3px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink)}
 input[type=radio]{width:24px;height:24px;accent-color:var(--pink)}
 input[type=color]{width:60px;height:40px;border:0;background:none}
-.tabs{display:flex;flex-wrap:wrap}.tabs .btn.on{background:var(--pink);color:#fff}
+.tabs{display:flex;flex-wrap:wrap}.tabs .btn.on{background:var(--pink)}
 .wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:560px}
 th,td{border-bottom:2px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;font-size:.9rem}
 small,.muted{opacity:.75;font-weight:400}
@@ -45,7 +45,7 @@ small,.muted{opacity:.75;font-weight:400}
 @media (prefers-reduced-motion:reduce){#conf span{animation:none;display:none}}
 </style></head><body>
 <main>
-<section id="home">
+<section id="home" hidden>
   <div class="card big"><h1>🧭 MazeQuest</h1><div>Classroom Chase</div></div>
   <div class="card"><p>Students: open the personal link your teacher gave you.</p>
   <button class="btn pink" data-act="pin">Teacher login</button></div>
@@ -64,6 +64,11 @@ small,.muted{opacity:.75;font-weight:400}
 
 <script>
 "use strict";
+/* ===================== 1. STORE (swap this module for a real backend) =====================
+   Everything the app persists lives in one object `db`:
+   questions, students (access whitelist), attempts (analytics log), theme, pin.
+   NOTE: localStorage is per-browser, so teacher + students must share a browser/device
+   (e.g. classroom Chromebooks) until load()/save() are pointed at a server or cloud DB. */
 const KEY='mazequest-v1', $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const THEMES={
@@ -85,21 +90,32 @@ function closeModal(){$('modal').hidden=true}
 const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
 
+/* ===================== 2. AUDIO (Web Audio, no files) ===================== */
 let AC,muted=false,mus;
-function tone(f,d,type='triangle',t0=0,v=.13){if(muted)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+t0;
+function tone(f,d,type='triangle',t0=0,v=.13){if(muted)return;try{AC=AC||new AudioContext();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+t0;
  o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d)}catch(e){}}
 const seq=(n,d=.15,type)=>n.forEach((f,i)=>tone(f,d+.1,type,i*d));
 const sfx={star:()=>tone(900,.08),right:()=>seq([523,659,784,1047]),wrong:()=>tone(160,.35,'sawtooth',0,.07),hit:()=>seq([300,200,130],.1,'square'),win:()=>seq([523,659,784,1047,784,1047,1319],.14)};
 function music(on){clearInterval(mus);if(!on)return;const n=[523,587,659,784,880,784,659,587];let i=0;mus=setInterval(()=>tone(n[i++%8],.2,'sine',0,.04),260)}
 
+/* ===================== 3. SELF-CONTAINED SIGNED LINKS =====================
+   A link looks like  ?student=Sarah&code=<payload>.<signature>
+   payload   = base64url JSON {e: expiry ms (0 = never), q: {q: questions, t: theme}}
+   signature = HMAC-SHA256(SECRET, name + "|" + payload), shortened.
+   On ANY device the page re-computes the signature from the name in the URL; if it matches
+   (and the link hasn't expired) the student is let in and the quiz is read from the link
+   itself. Nothing is looked up in localStorage, so links work on phones and tablets.
+   LIMITS: SECRET is visible in this file, so this stops edited names/expiry, not a
+   determined student. Change SECRET before class. Real security needs a server. */
 const SECRET='change-me-before-class';
 const b64=s=>btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const unb64=s=>decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))));
 async function sign(msg){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
   const h=new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg)));return Array.from(h.slice(0,12),x=>x.toString(16).padStart(2,'0')).join('')}
-let cfg=null;
+let cfg=null; /* quiz + theme decoded from a student link; overrides local data for that session */
 const QS=()=>cfg?cfg.q:db.questions,TH=()=>cfg?cfg.t:db.theme;
 async function makeLink(name,exp){
+  /* Uploaded (data:) images are too big for a URL, so only image URLs travel in the link. */
   const q=db.questions.map(x=>({...x,img:x.img.startsWith('data:')?'':x.img}));
   const pl=b64(JSON.stringify({e:exp,q:{q,t:db.theme}}));
   return location.href.split(/[?#]/)[0]+'?student='+encodeURIComponent(name)+'&code='+pl+'.'+await sign(name+'|'+pl);
@@ -117,40 +133,27 @@ function gate(s){
   const n=db.attempts.filter(a=>a.student===s.name).length+1;
   $('gate').innerHTML=`<div class="card big">🧭<h1>Ready, ${esc(s.name)}?</h1><p>Attempt #${n}</p>
   <label style="font-size:1rem;text-align:left">Your name<input id="gname" value="${esc(s.name)}"></label>
-  <label style="font-size:1rem;text-align:left;margin-top:10px">Game Difficulty:
-    <select id="gdiff" style="margin-top:6px;font-weight:700">
-      <option value="easy" selected>🟢 Easy (Slow &amp; Relaxed)</option>
-      <option value="medium">🟡 Medium (Normal Speed)</option>
-      <option value="hard">🔴 Hard (Fast / Original)</option>
-    </select>
-  </label>
+  <label style="font-size:1rem;text-align:left">Difficulty<select id="glvl"><option value="easy">Easy (slow chasers)</option><option value="medium">Medium</option><option value="hard">Hard (fast chasers)</option></select></label>
   <label class="row" style="justify-content:center"><input type="checkbox" id="gsnd" checked style="width:24px;height:24px"> Sound on</label>
   <p style="font-size:1rem">Collect ${esc(TH().item)}, dodge ${esc(TH().chaser)}, and answer the ❓ gates!</p>
   <button class="btn pink" data-act="go" data-n="${esc(s.name)}">Let's go!</button></div>`;
   show('gate');
 }
 
+/* ===================== 4. GAME ENGINE ===================== */
 const MAP=["###############","#P.....#......#","#.###.#.#.###.#","#.#.........#.#","#...##.#.##...#","###.#..C..#.###","#...##.#.##...#","#.#.........#.#","#.###.#.#.###.#","#.....#C......#","###############"];
 const W=15,H=11,S=40,cv=$('cv'),ctx=cv.getContext('2d');
 const open=(x,y)=>MAP[y]&&MAP[y][x]!==undefined&&MAP[y][x]!=='#';
 const DIRS={u:{x:0,y:-1},d:{x:0,y:1},l:{x:-1,y:0},r:{x:1,y:0}},ZERO={x:0,y:0};
-let G=null,last=null;
-
-function startGame(name,preview,difficulty='easy'){
-  last={name,preview,difficulty};closeModal();
+let G=null,last=null,level='easy';
+const SPEED={easy:750,medium:550,hard:380}; /* ms between chaser steps */
+function startGame(name,preview){
+  last={name,preview};closeModal();
   const qs=shuffle(QS().slice()).slice(0,6),stars=new Set(),free=[],ch=[];
   MAP.forEach((r,y)=>[...r].forEach((c,x)=>{if(c==='C')ch.push({x,y,sx:x,sy:y});if(c!=='#'){stars.add(x+','+y);if(Math.abs(x-1)+Math.abs(y-1)>5&&c!=='C')free.push(x+','+y)}}));
   stars.delete('1,1');
   const portals=new Map();shuffle(free).slice(0,qs.length).forEach((k,i)=>{portals.set(k,qs[i]);stars.delete(k)});
-
-  const speeds={
-    easy:   { chaser: 750, player: 200 },
-    medium: { chaser: 520, player: 180 },
-    hard:   { chaser: 380, player: 165 }
-  };
-  const spd = speeds[difficulty] || speeds.easy;
-
-  G={name,preview,difficulty,spd,stars,portals,ch,p:{x:1,y:1},dir:ZERO,want:ZERO,lives:3,score:0,got:0,answers:[],total:qs.length,
+  G={name,preview,stars,portals,ch,p:{x:1,y:1},dir:ZERO,want:ZERO,lives:3,score:0,got:0,answers:[],total:qs.length,
      t0:Date.now(),lp:0,lc:0,boost:0,freeze:0,inv:0,paused:false,over:false};
   show('game');hud();music(!muted);requestAnimationFrame(loop);
 }
@@ -158,10 +161,10 @@ function hud(){$('hud').innerHTML=`<span>${'❤️'.repeat(Math.max(G.lives,0))}
 function loop(){if(!G||G.over)return;requestAnimationFrame(loop);if(!G.paused)step();draw()}
 function step(){
   const now=Date.now(),p=G.p;
-  if(now-G.lp>(G.boost>now?105:G.spd.player)){G.lp=now;
+  if(now-G.lp>(G.boost>now?105:165)){G.lp=now;
     for(const d of [G.want,G.dir])if((d.x||d.y)&&open(p.x+d.x,p.y+d.y)){G.dir=d;p.x+=d.x;p.y+=d.y;collect();break}}
   if(G.over||G.paused)return;
-  if(now>G.freeze&&now-G.lc>G.spd.chaser){G.lc=now;G.ch.forEach(moveChaser)}
+  if(now>G.freeze&&now-G.lc>SPEED[level]){G.lc=now;G.ch.forEach(moveChaser)}
   if(now>G.inv&&now>G.freeze&&G.ch.some(c=>c.x===p.x&&c.y===p.y))hurt();
 }
 function moveChaser(c){
@@ -180,6 +183,9 @@ function hurt(){
   G.lives--;sfx.hit();G.p={x:1,y:1};G.dir=G.want=ZERO;G.inv=Date.now()+2000;
   G.ch.forEach(c=>{c.x=c.sx;c.y=c.sy});hud();if(G.lives<=0)end(false);
 }
+/* Question gate: modal shows the teacher's question (+image). Every answer is pushed to
+   G.answers {question, chosen, correct, ok}; that array is saved with the attempt and
+   powers the teacher's "missed questions / wrong answers" analytics. */
 function ask(q,k){
   G.cur=q;G.curKey=k;
   openModal(`<h2>${esc(q.q)}</h2>${q.img?`<img class="qimg" src="${esc(q.img)}" alt="">`:''}`+
@@ -218,6 +224,8 @@ function end(win){
   if(win)G.score+=G.lives*25;
   const ok=G.answers.filter(a=>a.ok).length,ratio=G.total?ok/G.total:0,sg=win?(ratio>=.9?3:ratio>=.6?2:1):(ok?1:0);
   const n=db.attempts.filter(a=>a.student===G.name).length+1;
+  /* Analytics: one record per run, appended to db.attempts. The teacher dashboard and CSV
+     export are computed purely from this array (attempt #, score, time, answers). */
   const rec={student:G.name,attempt:n,date:new Date().toISOString(),score:G.score,stars:sg,time:Math.round((Date.now()-G.t0)/1000),win,answers:G.answers};
   if(!G.preview){db.attempts.push(rec);save()}
   (win?sfx.win:sfx.hit)();if(win)confetti();
@@ -229,6 +237,7 @@ function end(win){
 }
 function confetti(){const c=$('conf');for(let i=0;i<45;i++){const s=document.createElement('span');s.textContent=['🎉','✨','⭐','🎈'][i%4];s.style.left=Math.random()*100+'vw';s.style.animationDelay=Math.random()*1.5+'s';c.appendChild(s)}setTimeout(()=>c.innerHTML='',5500)}
 
+/* Controls: keyboard, on-screen D-pad, swipe */
 const KEYS={ArrowUp:'u',w:'u',W:'u',ArrowDown:'d',s:'d',S:'d',ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r'};
 addEventListener('keydown',e=>{if(G&&!G.over&&KEYS[e.key]){G.want=DIRS[KEYS[e.key]];e.preventDefault()}});
 document.querySelectorAll('.dpad [data-d]').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();if(G)G.want=DIRS[b.dataset.d]}));
@@ -237,11 +246,13 @@ cv.addEventListener('touchstart',e=>{t0=e.touches[0]},{passive:true});
 cv.addEventListener('touchend',e=>{if(!t0||!G)return;const t=e.changedTouches[0],dx=t.clientX-t0.clientX,dy=t.clientY-t0.clientY;
   if(Math.max(Math.abs(dx),Math.abs(dy))>20)G.want=DIRS[Math.abs(dx)>Math.abs(dy)?(dx>0?'r':'l'):(dy>0?'d':'u')]});
 
+/* ===================== 5. TEACHER PORTAL ===================== */
 let tab='q',editQ=-1,fileImg=null;
 const teacherHTML=()=>`<div class="card"><h1>👩‍🏫 Teacher Dashboard</h1>
  <nav class="tabs">${[['q','Questions'],['a','Student links'],['t','Theme'],['s','Results']].map(([k,l])=>`<button class="btn ${tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}
  <button class="btn mint" data-act="preview">Preview game</button><button class="btn" data-act="logout">Log out</button></nav></div><div id="tbody"></div>`;
-function renderT(){$('teacher').innerHTML=teacherHTML();$('tbody').innerHTML={q:rQ,a:rA,t:rT,s:rS}[tab]();show('teacher')}
+function renderT(){$('teacher').innerHTML=teacherHTML();
+  $('tbody').innerHTML={q:rQ,a:rA,t:rT,s:rS}[tab]();show('teacher')}
 function rQ(){
   const e=db.questions[editQ]||{q:'',c:['','','',''],a:0,e:'',img:''};fileImg=null;
   return `<div class="card"><h2>${editQ>=0?'Edit':'New'} question</h2>
@@ -252,7 +263,7 @@ function rQ(){
   <label>Image URL (optional)<input id="qi" value="${esc(e.img.startsWith('data:')?'':e.img)}"></label>
   <label>Or upload an image<input type="file" id="qf" accept="image/*"></label><div id="pv">${e.img?`<img class="qimg" src="${esc(e.img)}" alt="">`:''}</div>
   <button class="btn pink" data-act="saveQ">Save question</button>${editQ>=0?'<button class="btn" data-act="cancelQ">Cancel</button>':''}</div>
-  <div class="card"><h2>${db.questions.length} questions</h2>${db.questions.map((q,i)=>`<p>${esc(q.q)}${q.img?'🖼️':''}<br><button class="btn sm" data-act="editQ" data-i="${i}">Edit</button><button class="btn sm pink" data-act="delQ" data-i="${i}">Delete</button></p>`).join('')}</div>`;
+  <div class="card"><h2>${db.questions.length} questions</h2>${db.questions.map((q,i)=>`<p>${esc(q.q)} ${q.img?'🖼️':''}<br><button class="btn sm" data-act="editQ" data-i="${i}">Edit</button><button class="btn sm pink" data-act="delQ" data-i="${i}">Delete</button></p>`).join('')}</div>`;
 }
 function rA(){
   return `<div class="card"><h2>Create student links</h2>
@@ -260,13 +271,13 @@ function rA(){
   <label>Link lasts (hours, 0 = never expires)<input id="hrs" type="number" min="0" value="0"></label>
   <button class="btn pink" data-act="gen">Create links</button><button class="btn" data-act="regen">Refresh all links</button><p><small>Links carry a copy of your questions and theme. Finish editing first, then create or refresh links. Uploaded images stay on this device; use image URLs for links.</small></p></div>
   <div class="card wrap"><table><tr><th>Student</th><th>Unique link</th><th>Expires</th><th></th></tr>
-  ${db.students.map((s,i)=>`<tr><td>${esc(s.name)}</td><td><input readonly value="${esc(s.link\vert{}\vert{}'')}" onclick="this.select()"></td><td>${s.exp?new Date(s.exp).toLocaleString():'Never'}</td>
+  ${db.students.map((s,i)=>`<tr><td>${esc(s.name)}</td><td><input readonly value="${esc(s.link||'')}" onclick="this.select()"></td><td>${s.exp?new Date(s.exp).toLocaleString():'Never'}</td>
   <td><button class="btn sm" data-act="copy" data-i="${i}">Copy</button><button class="btn sm pink" data-act="delS" data-i="${i}">Remove</button></td></tr>`).join('')||'<tr><td colspan="4">No students yet.</td></tr>'}</table></div>
   <div class="card"><label>Change teacher PIN<input id="npin" value="${esc(db.pin)}" inputmode="numeric"></label><button class="btn" data-act="setpin">Save PIN</button></div>`;
 }
 function rT(){
   const t=db.theme;
-  return `<div class="card"><h2>Lesson theme</h2>${Object.keys(THEMES).map(k=>`<button class="btn" data-act="preset" data-k="${k}">${THEMES[k].player}${k}</button>`).join('')}
+  return `<div class="card"><h2>Lesson theme</h2>${Object.keys(THEMES).map(k=>`<button class="btn" data-act="preset" data-k="${k}">${THEMES[k].player} ${k}</button>`).join('')}
   <label class="row">Wall colour <input type="color" id="tw" value="${t.wall}"></label>
   <label class="row">Background <input type="color" id="tb" value="${t.bg}"></label>
   <label>Player avatar (emoji)<input id="tp" value="${esc(t.player)}"></label>
@@ -298,8 +309,9 @@ document.addEventListener('change',e=>{
   if(map[id]){t[map[id]]=v;save();toast('Theme saved')}
 });
 
+/* ===================== 6. ACTIONS (one delegated click handler) ===================== */
 const ACT={
-  pin(){openModal(`<h2>Teacher PIN</h2><input id="pinin" type="password" inputmode="numeric" placeholder="PIN (default 1234)"><br><br><button class="btn pink" data-act="pinok">Enter</button><button class="btn" data-act="close">Cancel</button>`);setTimeout(()=>$('pinin')&&$('pinin').focus(),50)},
+  pin(){openModal(`<h2>Teacher PIN</h2><input id="pinin" type="password" inputmode="numeric" placeholder="PIN (default 1234)"><button class="btn pink" data-act="pinok">Enter</button><button class="btn" data-act="close">Cancel</button>`);setTimeout(()=>$('pinin')&&$('pinin').focus(),50)},
   pinok(){if($('pinin').value===db.pin){closeModal();renderT()}else toast('Wrong PIN')},
   close:closeModal,logout(){show('home')},
   tab(d){tab=d.t;editQ=-1;renderT()},
@@ -318,15 +330,15 @@ const ACT={
   delS(d){db.students.splice(+d.i,1);save();renderT()},
   setpin(){const v=$('npin').value.trim();if(v.length<3)return toast('Use at least 3 digits');db.pin=v;save();toast('PIN saved')},
   preset(d){db.theme={...THEMES[d.k]};save();renderT()},
-  preview(){startGame('Preview',true,$('gdiff')?.value||'easy')},back(){renderT()},
+  preview(){startGame('Preview',true)},back(){renderT()},
   csv(){openModal(`<h2>Results CSV</h2><textarea id="csvt" rows="8" readonly>${esc(csv())}</textarea>
     <button class="btn mint" data-act="csvcopy">Copy</button><button class="btn" data-act="csvdl">Download .csv</button><button class="btn" data-act="close">Close</button>`)},
   csvcopy(){$('csvt').select();navigator.clipboard?.writeText($('csvt').value).then(()=>toast('Copied'),()=>document.execCommand('copy'))},
   csvdl(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv()],{type:'text/csv'}));a.download='mazequest-results.csv';a.click()},
   clear(){if(confirm('Delete ALL attempt records?')){db.attempts=[];save();renderT()}},
-  go(d){const el=$('gname'),nm=(el&&el.value.trim())||d.n;muted=!$('gsnd').checked;const diff=$('gdiff')?.value||'easy';startGame(nm,false,diff)},
+  go(d){const el=$('gname'),nm=(el&&el.value.trim())||d.n;muted=!$('gsnd').checked;level=$('glvl').value;startGame(nm,false)},
   ans(d){answer(+d.i)},cont,
-  again(){startGame(last.name,last.preview,last.difficulty)},
+  again(){startGame(last.name,last.preview)},
   mute(d,b){muted=!muted;b.textContent=muted?'🔇 Muted':'🔊 Sound';music(!muted&&G&&!G.over)},
   quit(){if(G)G.over=true;music(false);last&&last.preview?renderT():boot()}
 };
