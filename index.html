@@ -117,7 +117,7 @@ const QS=()=>cfg?cfg.q:db.questions,TH=()=>cfg?cfg.t:db.theme;
 async function makeLink(name,exp){
   /* Uploaded (data:) images are too big for a URL, so only image URLs travel in the link. */
   const q=db.questions.map(x=>({...x,img:x.img.startsWith('data:')?'':x.img}));
-  const pl=b64(JSON.stringify({e:exp,q:{q,t:db.theme}}));
+  const pl=b64(JSON.stringify({e:exp,q:{q,t:db.theme,u:db.syncUrl||''}}));
   return location.href.split(/[?#]/)[0]+'?student='+encodeURIComponent(name)+'&code='+pl+'.'+await sign(name+'|'+pl);
 }
 async function verify(who,code){
@@ -145,23 +145,29 @@ const MAP=["###############","#P.....#......#","#.###.#.#.###.#","#.#.........#.
 const W=15,H=11,S=40,cv=$('cv'),ctx=cv.getContext('2d');
 const open=(x,y)=>MAP[y]&&MAP[y][x]!==undefined&&MAP[y][x]!=='#';
 const DIRS={u:{x:0,y:-1},d:{x:0,y:1},l:{x:-1,y:0},r:{x:1,y:0}},ZERO={x:0,y:0};
-let G=null,last=null,level='easy';
+let G=null,last=null,level='easy',raf=0;
 const SPEED={easy:750,medium:550,hard:380}; /* ms between chaser steps */
+/* Player step time per level. Always well below the chaser time (chaser/player = 4.5x, 3.9x, 3.3x),
+   and the speed boost makes it 35% quicker still. */
+const PSTEP={easy:165,medium:140,hard:115};
 function startGame(name,preview){
+  /* Full reset: stop the old loop and music, clear modal + confetti, then build a brand-new G
+     below (fresh answers[], score, lives, portals, stars, timers) so nothing leaks between runs. */
+  cancelAnimationFrame(raf);music(false);G=null;$('conf').innerHTML='';
   last={name,preview};closeModal();
   const qs=shuffle(QS().slice()).slice(0,6),stars=new Set(),free=[],ch=[];
   MAP.forEach((r,y)=>[...r].forEach((c,x)=>{if(c==='C')ch.push({x,y,sx:x,sy:y});if(c!=='#'){stars.add(x+','+y);if(Math.abs(x-1)+Math.abs(y-1)>5&&c!=='C')free.push(x+','+y)}}));
   stars.delete('1,1');
   const portals=new Map();shuffle(free).slice(0,qs.length).forEach((k,i)=>{portals.set(k,qs[i]);stars.delete(k)});
-  G={name,preview,stars,portals,ch,p:{x:1,y:1},dir:ZERO,want:ZERO,lives:3,score:0,got:0,answers:[],total:qs.length,
+  G={name,preview,stars,portals,ch,p:{x:1,y:1},dir:ZERO,want:ZERO,lives:3,score:0,got:0,answers:[],cur:null,curKey:null,bonus:false,total:qs.length,
      t0:Date.now(),lp:0,lc:0,boost:0,freeze:0,inv:0,paused:false,over:false};
-  show('game');hud();music(!muted);requestAnimationFrame(loop);
+  show('game');hud();music(!muted);raf=requestAnimationFrame(loop);
 }
 function hud(){$('hud').innerHTML=`<span>${'❤️'.repeat(Math.max(G.lives,0))}</span><span>⭐ ${G.score}</span><span>❓ ${G.portals.size} left</span>`}
-function loop(){if(!G||G.over)return;requestAnimationFrame(loop);if(!G.paused)step();draw()}
+function loop(){if(!G||G.over)return;raf=requestAnimationFrame(loop);if(!G.paused)step();draw()}
 function step(){
   const now=Date.now(),p=G.p;
-  if(now-G.lp>(G.boost>now?105:165)){G.lp=now;
+  const ps=PSTEP[level];if(now-G.lp>(G.boost>now?ps*.65:ps)){G.lp=now;
     for(const d of [G.want,G.dir])if((d.x||d.y)&&open(p.x+d.x,p.y+d.y)){G.dir=d;p.x+=d.x;p.y+=d.y;collect();break}}
   if(G.over||G.paused)return;
   if(now>G.freeze&&now-G.lc>SPEED[level]){G.lc=now;G.ch.forEach(moveChaser)}
@@ -192,7 +198,8 @@ function ask(q,k){
     q.c.map((c,i)=>`<button class="btn ans" data-act="ans" data-i="${i}">${'ABCD'[i]}. ${esc(c)}</button>`).join(''));
 }
 function answer(i){
-  const q=G.cur,ok=i===q.a;
+  if(!G||G.over||!G.cur)return; /* ignore stale or double clicks */
+  const q=G.cur,ok=i===q.a;G.cur=null;
   G.answers.push({id:q.id,q:q.q,chosen:q.c[i],correct:q.c[q.a],ok,e:q.e});
   G.portals.delete(G.curKey);G.bonus=ok;
   if(ok){G.score+=50;sfx.right()}else{G.lives--;sfx.wrong()}
@@ -202,6 +209,7 @@ function answer(i){
   ;$('mbox').insertAdjacentHTML('beforeend','<button class="btn mint" data-act="cont">Keep going</button>');
 }
 function cont(){
+  if(!G||G.over||!G.paused)return;
   closeModal();const now=Date.now();
   if(G.bonus){G.boost=now+5000;G.freeze=now+4000}
   G.paused=false;G.lp=G.lc=now;
@@ -226,8 +234,8 @@ function end(win){
   const n=db.attempts.filter(a=>a.student===G.name).length+1;
   /* Analytics: one record per run, appended to db.attempts. The teacher dashboard and CSV
      export are computed purely from this array (attempt #, score, time, answers). */
-  const rec={student:G.name,attempt:n,date:new Date().toISOString(),score:G.score,stars:sg,time:Math.round((Date.now()-G.t0)/1000),win,answers:G.answers};
-  if(!G.preview){db.attempts.push(rec);save()}
+  const rec={student:G.name,attempt:n,date:new Date().toISOString(),score:G.score,stars:sg,time:Math.round((Date.now()-G.t0)/1000),win,difficulty:level,answers:G.answers};
+  if(!G.preview){db.attempts.push(rec);save();sync(rec)}
   (win?sfx.win:sfx.hit)();if(win)confetti();
   $('result').innerHTML=`<div class="card big">${win?'🏆':'💪'}<h1>${win?'You did it!':'Good try!'}</h1>
    <div>${'⭐'.repeat(sg)}${'☆'.repeat(3-sg)}</div><p>Score <b>${G.score}</b> · Time ${fmt(rec.time)} · Attempt #${n}${G.preview?' (preview, not saved)':''}</p>
@@ -246,13 +254,38 @@ cv.addEventListener('touchstart',e=>{t0=e.touches[0]},{passive:true});
 cv.addEventListener('touchend',e=>{if(!t0||!G)return;const t=e.changedTouches[0],dx=t.clientX-t0.clientX,dy=t.clientY-t0.clientY;
   if(Math.max(Math.abs(dx),Math.abs(dy))>20)G.want=DIRS[Math.abs(dx)>Math.abs(dy)?(dx>0?'r':'l'):(dy>0?'d':'u')]});
 
+/* ===================== 4b. GOOGLE SHEETS LIVE SYNC =====================
+   When a student finishes a run, one POST goes to the teacher's Apps Script Web App URL.
+   The URL travels inside the signed student link (cfg.u), so phones/tablets know where to send.
+   mode:'no-cors' + text/plain avoids the CORS preflight Apps Script can't answer; the reply is
+   opaque, so confirm delivery by looking at the sheet. */
+const syncUrl=()=>(cfg?cfg.u:db.syncUrl)||'';
+function postRow(d,u){try{fetch(u,{method:'POST',mode:'no-cors',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(d)}).catch(()=>{})}catch(e){}}
+function sync(rec){const u=syncUrl();if(!u)return;
+  postRow({student:rec.student,attempt:rec.attempt,score:rec.score,time:rec.time,difficulty:rec.difficulty,win:rec.win,stars:rec.stars,
+    missed:rec.answers.filter(a=>!a.ok).map(a=>a.q+' -> '+a.chosen).join(' | ')},u)}
+const APPS=`function doPost(e){
+  var d=JSON.parse(e.postData.contents);
+  var ss=SpreadsheetApp.getActiveSpreadsheet();
+  var s=ss.getSheetByName('Scores')||ss.insertSheet('Scores');
+  if(s.getLastRow()===0)s.appendRow(['Time','Student','Attempt','Score','Seconds','Difficulty','Result','Missed questions']);
+  s.appendRow([new Date(),d.student,d.attempt,d.score,d.time,d.difficulty,d.win?'Won':'Lost',d.missed]);
+  return ContentService.createTextOutput('ok');
+}`;
+function rY(){return `<div class="card"><h2>Google Sheets live sync</h2>
+  <label>Google Apps Script Web App URL<input id="surl" value="${esc(db.syncUrl||'')}" placeholder="https://script.google.com/macros/s/.../exec"></label>
+  <button class="btn pink" data-act="saveUrl">Save URL</button><button class="btn" data-act="testSync">Send test row</button>
+  <p><small>After changing the URL, press "Refresh all links" on the Student links tab and re-share the links. Sync only works when this page is hosted somewhere that allows requests to other sites (your school site, GitHub Pages, or a local file). Delivery can't be confirmed in the page, so check your sheet.</small></p></div>
+  <div class="card"><h2>Sheet setup</h2><p><small>Google Sheet → Extensions → Apps Script → paste → Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone → copy the /exec URL.</small></p>
+  <textarea rows="10" readonly onclick="this.select()">${esc(APPS)}</textarea></div>`}
+
 /* ===================== 5. TEACHER PORTAL ===================== */
 let tab='q',editQ=-1,fileImg=null;
 const teacherHTML=()=>`<div class="card"><h1>👩‍🏫 Teacher Dashboard</h1>
- <nav class="tabs">${[['q','Questions'],['a','Student links'],['t','Theme'],['s','Results']].map(([k,l])=>`<button class="btn ${tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}
+ <nav class="tabs">${[['q','Questions'],['a','Student links'],['t','Theme'],['s','Results'],['y','Sync']].map(([k,l])=>`<button class="btn ${tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}
  <button class="btn mint" data-act="preview">Preview game</button><button class="btn" data-act="logout">Log out</button></nav></div><div id="tbody"></div>`;
 function renderT(){$('teacher').innerHTML=teacherHTML();
-  $('tbody').innerHTML={q:rQ,a:rA,t:rT,s:rS}[tab]();show('teacher')}
+  $('tbody').innerHTML={q:rQ,a:rA,t:rT,s:rS,y:rY}[tab]();show('teacher')}
 function rQ(){
   const e=db.questions[editQ]||{q:'',c:['','','',''],a:0,e:'',img:''};fileImg=null;
   return `<div class="card"><h2>${editQ>=0?'Edit':'New'} question</h2>
@@ -336,6 +369,8 @@ const ACT={
   csvcopy(){$('csvt').select();navigator.clipboard?.writeText($('csvt').value).then(()=>toast('Copied'),()=>document.execCommand('copy'))},
   csvdl(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv()],{type:'text/csv'}));a.download='mazequest-results.csv';a.click()},
   clear(){if(confirm('Delete ALL attempt records?')){db.attempts=[];save();renderT()}},
+  saveUrl(){const v=$('surl').value.trim();if(v&&!/^https:\/\/script\.google\.com\//.test(v))return toast('Use the https://script.google.com/... Web App URL');db.syncUrl=v;save();toast('Sync URL saved')},
+  testSync(){const u=db.syncUrl;if(!u)return toast('Save a URL first');postRow({student:'Test',attempt:0,score:0,time:0,difficulty:level,win:false,missed:'(test row)'},u);toast('Test row sent. Check your sheet.')},
   go(d){const el=$('gname'),nm=(el&&el.value.trim())||d.n;muted=!$('gsnd').checked;level=$('glvl').value;startGame(nm,false)},
   ans(d){answer(+d.i)},cont,
   again(){startGame(last.name,last.preview)},
